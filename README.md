@@ -136,9 +136,9 @@ splunk_queries/19_unquoted_service_path_detection.spl
 splunk-public-attack-dataset-investigation/
 ├── README.md
 ├── investigation_report.md
-├── Project_4_SOC_Investigation_Report_Final.pdf
 ├── reports/
 │   └── 18_mitre_attack_mapping.md
+|   └── Project_4_SOC_Investigation_Report_Final.pdf
 ├── screenshots/
 │   ├── 01_attack_data_import_confirmed.png
 │   ├── 02_sysmon_event_codes_summary.png
@@ -147,13 +147,13 @@ splunk-public-attack-dataset-investigation/
 │   ├── 17_final_attack_timeline.png
 │   └── 19_unquoted_service_path_detection.png
 ├── splunk_queries/
-│   ├── 01_existing_logs.spl
+│   ├── 04_process_activity_classification.spl
 │   ├── ...
 │   └── 19_unquoted_service_path_detection.spl
-└── dataset/
-```
 
-> The dataset folder can be excluded from GitHub if the raw log file is large or if you prefer to link to the public source instead.
+```
+The raw attack dataset is stored locally and intentionally excluded from this GitHub repository through .gitignore. The project uses the public Splunk Attack Data source referenced above.
+
 
 ## Main Evidence
 
@@ -178,7 +178,7 @@ investigation_report.md
 and:
 
 ```text
-Project_4_SOC_Investigation_Report_Final.pdf
+reports/Project_4_SOC_Investigation_Report_Final.pdf
 ```
 
 ## Skills Demonstrated
