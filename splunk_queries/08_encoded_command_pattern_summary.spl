@@ -1,0 +1,25 @@
+index=attack_data sourcetype=XmlWinEventLog
+| rex field=_raw "<EventID>(?<EventCode>\d+)</EventID>"
+| search EventCode=1
+| rex field=_raw "<Data Name='UtcTime'>(?<UtcTime>[^<]+)</Data>"
+| rex field=_raw "<Computer>(?<Computer>[^<]+)</Computer>"
+| rex field=_raw "<Data Name='User'>(?<User>[^<]+)</Data>"
+| rex field=_raw "<Data Name='Image'>(?<Image>[^<]+)</Data>"
+| rex field=_raw "<Data Name='CommandLine'>(?<CommandLine>[^<]+)</Data>"
+| rex field=_raw "<Data Name='ParentImage'>(?<ParentImage>[^<]+)</Data>"
+| eval Process=replace(Image,"^.*\\\\","")
+| eval ParentProcess=replace(ParentImage,"^.*\\\\","")
+| where like(Process,"%powershell.exe%") AND like(CommandLine,"%EncodedCommand%")
+| rex field=CommandLine "(?i)-EncodedCommand\s+(?<EncodedCommand>[A-Za-z0-9+/=]+)"
+| eval EncodedLength=len(EncodedCommand)
+| stats count as occurrences,
+        earliest(UtcTime) as first_seen,
+        latest(UtcTime) as last_seen,
+        values(Computer) as host,
+        values(User) as user,
+        values(ParentProcess) as parent_processes,
+        values(EncodedLength) as encoded_length
+        by EncodedCommand
+| eval EncodedPreview=substr(EncodedCommand,1,40)."..."
+| table EncodedPreview occurrences first_seen last_seen host user parent_processes encoded_length
+| sort - occurrences

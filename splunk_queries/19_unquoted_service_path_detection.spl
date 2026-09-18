@@ -1,0 +1,17 @@
+index=attack_data sourcetype=XmlWinEventLog
+| rex field=_raw "<EventID>(?<EventCode>\d+)</EventID>"
+| search EventCode=1
+| rex field=_raw "<Data Name='UtcTime'>(?<UtcTime>[^<]+)</Data>"
+| rex field=_raw "<Computer>(?<Computer>[^<]+)</Computer>"
+| rex field=_raw "<Data Name='User'>(?<User>[^<]+)</Data>"
+| rex field=_raw "<Data Name='Image'>(?<Image>[^<]+)</Data>"
+| rex field=_raw "<Data Name='CommandLine'>(?<CommandLine>[^<]+)</Data>"
+| rex field=_raw "<Data Name='ParentImage'>(?<ParentImage>[^<]+)</Data>"
+| eval Process=replace(Image,"^.*\\\\","")
+| eval ParentProcess=replace(ParentImage,"^.*\\\\","")
+| where lower(ParentProcess)="services.exe"
+| where match(lower(Image),"^[a-z]:\\\\[^\\\\]+\\.exe$")
+| eval Detection="Possible unquoted service path execution"
+| eval Severity=if(lower(User)="nt authority\\system","High","Medium")
+| table UtcTime Computer User ParentProcess Process Image CommandLine Detection Severity
+| sort UtcTime

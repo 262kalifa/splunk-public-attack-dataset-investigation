@@ -1,0 +1,32 @@
+index=attack_data sourcetype=XmlWinEventLog
+| rex field=_raw "<EventID>(?<EventCode>\d+)</EventID>"
+| search EventCode=1
+| rex field=_raw "<Data Name='UtcTime'>(?<UtcTime>[^<]+)</Data>"
+| rex field=_raw "<Computer>(?<Computer>[^<]+)</Computer>"
+| rex field=_raw "<Data Name='User'>(?<User>[^<]+)</Data>"
+| rex field=_raw "<Data Name='Image'>(?<Image>[^<]+)</Data>"
+| rex field=_raw "<Data Name='CommandLine'>(?<CommandLine>[^<]+)</Data>"
+| rex field=_raw "<Data Name='ParentImage'>(?<ParentImage>[^<]+)</Data>"
+| eval Process=replace(Image,"^.*\\\\","")
+| eval ParentProcess=replace(ParentImage,"^.*\\\\","")
+| where User="ATTACKRANGE\\Administrator"
+| where like(Process,"%winrshost.exe%")
+    OR like(Process,"%cmd.exe%")
+    OR like(Process,"%powershell.exe%")
+    OR like(Process,"%whoami.exe%")
+    OR like(Process,"%shutdown.exe%")
+    OR like(Process,"%chcp.com%")
+| eval ProcessChain=ParentProcess." -> ".Process
+| eval ActivityType=case(
+    like(Process,"%winrshost.exe%"), "Remote shell host",
+    like(Process,"%cmd.exe%"), "Command shell",
+    like(Process,"%powershell.exe%") AND like(CommandLine,"%EncodedCommand%"), "Encoded PowerShell",
+    like(Process,"%powershell.exe%"), "PowerShell activity",
+    like(Process,"%whoami.exe%"), "User discovery",
+    like(Process,"%shutdown.exe%"), "System reboot command",
+    like(Process,"%chcp.com%"), "Code page change",
+    true(), "Other"
+)
+| eval ShortCommand=substr(CommandLine,1,120)
+| table UtcTime Computer User ProcessChain ActivityType ShortCommand
+| sort UtcTime

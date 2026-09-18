@@ -1,0 +1,30 @@
+index=attack_data sourcetype=XmlWinEventLog
+| rex field=_raw "<EventID>(?<EventCode>\d+)</EventID>"
+| rex field=_raw "<Data Name='UtcTime'>(?<UtcTime>[^<]+)</Data>"
+| rex field=_raw "<Data Name='User'>(?<User>[^<]+)</Data>"
+| rex field=_raw "<Data Name='Image'>(?<Image>[^<]+)</Data>"
+| rex field=_raw "<Data Name='CommandLine'>(?<CommandLine>[^<]+)</Data>"
+| rex field=_raw "<Data Name='ParentImage'>(?<ParentImage>[^<]+)</Data>"
+| rex field=_raw "<Data Name='TargetFilename'>(?<TargetFilename>[^<]+)</Data>"
+| rex field=_raw "<Data Name='SourceImage'>(?<SourceImage>[^<]+)</Data>"
+| rex field=_raw "<Data Name='TargetImage'>(?<TargetImage>[^<]+)</Data>"
+| rex field=_raw "<Data Name='GrantedAccess'>(?<GrantedAccess>[^<]+)</Data>"
+| eval Process=replace(Image,"^.*\\\\","")
+| eval ParentProcess=replace(ParentImage,"^.*\\\\","")
+| where like(lower(_raw),"%c:\\program.exe%")
+| eval ActivityType=case(
+    EventCode="1" AND like(lower(CommandLine),"%copy%") AND like(lower(CommandLine),"%c:\\program.exe%"), "Program.exe copy command",
+    EventCode="11" AND lower(TargetFilename)="c:\\program.exe", "Program.exe file created",
+    EventCode="1" AND lower(Image)="c:\\program.exe", "Program.exe executed",
+    EventCode="10", "Program.exe process access",
+    true(), "Related activity"
+)
+| eval Evidence=case(
+    ActivityType="Program.exe copy command", substr(CommandLine,1,200),
+    ActivityType="Program.exe file created", TargetFilename,
+    ActivityType="Program.exe executed", Process." executed by ".ParentProcess,
+    ActivityType="Program.exe process access", SourceImage." -> ".TargetImage." | Access=".GrantedAccess,
+    true(), substr(coalesce(CommandLine,TargetFilename,SourceImage,TargetImage),1,200)
+)
+| table UtcTime EventCode User ActivityType Evidence
+| sort UtcTime

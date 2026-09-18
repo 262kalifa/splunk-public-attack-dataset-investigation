@@ -1,0 +1,23 @@
+index=attack_data sourcetype=XmlWinEventLog
+| rex field=_raw "<EventID>(?<EventCode>\d+)</EventID>"
+| search EventCode=1
+| rex field=_raw "<Data Name='UtcTime'>(?<UtcTime>[^<]+)</Data>"
+| rex field=_raw "<Computer>(?<Computer>[^<]+)</Computer>"
+| rex field=_raw "<Data Name='User'>(?<User>[^<]+)</Data>"
+| rex field=_raw "<Data Name='Image'>(?<Image>[^<]+)</Data>"
+| rex field=_raw "<Data Name='CommandLine'>(?<CommandLine>[^<]+)</Data>"
+| rex field=_raw "<Data Name='ParentImage'>(?<ParentImage>[^<]+)</Data>"
+| eval Process=replace(Image,"^.*\\\\","")
+| eval ParentProcess=replace(ParentImage,"^.*\\\\","")
+| eval ShortCommand=substr(CommandLine,1,120)
+| eval ActivityType=case(
+    like(Image,"%SplunkUniversalForwarder%"), "Likely normal Splunk Forwarder activity",
+    like(CommandLine,"%EncodedCommand%"), "Suspicious PowerShell encoded command",
+    like(Image,"%whoami.exe%"), "Discovery command",
+    like(Image,"%shutdown.exe%"), "System reboot command",
+    like(Image,"%winrshost.exe%"), "Remote shell activity",
+    like(Image,"%cmd.exe%"), "Command shell activity",
+    true(), "Other process activity"
+)
+| table UtcTime Computer User Process ParentProcess ActivityType ShortCommand
+| sort UtcTime

@@ -1,0 +1,21 @@
+index=attack_data sourcetype=XmlWinEventLog
+| rex field=_raw "<EventID>(?<EventCode>\d+)</EventID>"
+| search EventCode=12 OR EventCode=13
+| rex field=_raw "<Data Name='UtcTime'>(?<UtcTime>[^<]+)</Data>"
+| rex field=_raw "<Computer>(?<Computer>[^<]+)</Data>"
+| rex field=_raw "<Data Name='User'>(?<User>[^<]+)</Data>"
+| rex field=_raw "<Data Name='Image'>(?<Image>[^<]+)</Data>"
+| rex field=_raw "<Data Name='TargetObject'>(?<TargetObject>[^<]+)</Data>"
+| rex field=_raw "<Data Name='Details'>(?<Details>[^<]+)</Data>"
+| eval Process=replace(Image,"^.*\\\\","")
+| where match(TargetObject,"(?i)\\\\Services\\\\")
+| where match(TargetObject,"(?i)\\\\ImagePath$")
+| rex field=TargetObject "(?i)\\\\Services\\\\(?<ServiceName>[^\\\\]+)"
+| eval RegistryActivity=case(
+    EventCode="12", "Registry object created/deleted",
+    EventCode="13", "Registry value set",
+    true(), "Other registry activity"
+)
+| eval ShortDetails=substr(Details,1,200)
+| table UtcTime Computer User Process EventCode RegistryActivity ServiceName TargetObject ShortDetails
+| sort UtcTime

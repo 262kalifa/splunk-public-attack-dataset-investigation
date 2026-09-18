@@ -1,0 +1,48 @@
+index=attack_data sourcetype=XmlWinEventLog
+| rex field=_raw "<EventID>(?<EventCode>\d+)</EventID>"
+| rex field=_raw "<Data Name='UtcTime'>(?<UtcTime>[^<]+)</Data>"
+| rex field=_raw "<Data Name='User'>(?<User>[^<]+)</Data>"
+| rex field=_raw "<Data Name='Image'>(?<Image>[^<]+)</Data>"
+| rex field=_raw "<Data Name='CommandLine'>(?<CommandLine>[^<]+)</Data>"
+| rex field=_raw "<Data Name='ParentImage'>(?<ParentImage>[^<]+)</Data>"
+| rex field=_raw "<Data Name='TargetFilename'>(?<TargetFilename>[^<]+)</Data>"
+| rex field=_raw "<Data Name='TargetObject'>(?<TargetObject>[^<]+)</Data>"
+| rex field=_raw "<Data Name='Details'>(?<Details>[^<]+)</Data>"
+| search "windows_service.exe" OR "Example Service" OR "WindowsServiceExample.exe" OR "Program.exe"
+| eval Process=replace(Image,"^.*\\\\","")
+| eval ParentProcess=replace(ParentImage,"^.*\\\\","")
+| eval cmd=lower(coalesce(CommandLine,""))
+| eval Activity=case(
+    EventCode="1" AND Process="cmd.exe" AND like(cmd,"%copy%") AND like(cmd,"%windowsserviceexample.exe%"), "File copied",
+    EventCode="11" AND like(TargetFilename,"%windows_service.exe%"), "File created",
+    EventCode="13" AND like(TargetObject,"%Example Service%ImagePath%"), "Service ImagePath set",
+    EventCode="1" AND Process="sc.exe" AND like(cmd,"%create%") AND like(cmd,"%example service%"), "Service created",
+    EventCode="1" AND Process="sc.exe" AND like(cmd,"%start%") AND like(cmd,"%example service%"), "Service started",
+    EventCode="1" AND ParentProcess="services.exe", "Service executable ran",
+    EventCode="1" AND Process="sc.exe" AND like(cmd,"%stop%") AND like(cmd,"%example service%"), "Service stopped",
+    EventCode="1" AND Process="sc.exe" AND like(cmd,"%delete%") AND like(cmd,"%example service%"), "Service deleted"
+)
+| where isnotnull(Activity)
+| eval Step=case(
+    Activity="File copied", "1",
+    Activity="File created", "2",
+    Activity="Service ImagePath set", "3",
+    Activity="Service created", "4",
+    Activity="Service started", "5",
+    Activity="Service executable ran", "6",
+    Activity="Service stopped", "7",
+    Activity="Service deleted", "8"
+)
+| eval Evidence=case(
+    Activity="File copied", "WindowsServiceExample.exe copied to Program Files",
+    Activity="File created", "C:\\Program Files\\windows_service.exe created",
+    Activity="Service ImagePath set", "Example Service ImagePath set to windows_service.exe",
+    Activity="Service created", "sc.exe created Example Service",
+    Activity="Service started", "sc.exe started Example Service",
+    Activity="Service executable ran", Process." ran through services.exe",
+    Activity="Service stopped", "sc.exe stopped Example Service",
+    Activity="Service deleted", "sc.exe deleted Example Service"
+)
+| stats earliest(UtcTime) as Time values(Evidence) as Evidence by Step Activity
+| sort Step
+| table Step Time Activity Evidence

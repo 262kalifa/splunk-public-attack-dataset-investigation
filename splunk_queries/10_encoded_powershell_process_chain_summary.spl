@@ -1,0 +1,25 @@
+index=attack_data sourcetype=XmlWinEventLog
+| rex field=_raw "<EventID>(?<EventCode>\d+)</EventID>"
+| search EventCode=1
+| rex field=_raw "<Data Name='UtcTime'>(?<UtcTime>[^<]+)</Data>"
+| rex field=_raw "<Computer>(?<Computer>[^<]+)</Computer>"
+| rex field=_raw "<Data Name='User'>(?<User>[^<]+)</Data>"
+| rex field=_raw "<Data Name='Image'>(?<Image>[^<]+)</Data>"
+| rex field=_raw "<Data Name='CommandLine'>(?<CommandLine>[^<]+)</Data>"
+| rex field=_raw "<Data Name='ParentImage'>(?<ParentImage>[^<]+)</Data>"
+| rex field=_raw "<Data Name='ProcessGuid'>(?<ProcessGuid>[^<]+)</Data>"
+| eval Process=replace(Image,"^.*\\\\","")
+| eval ParentProcess=replace(ParentImage,"^.*\\\\","")
+| where like(Process,"%powershell.exe%") AND like(CommandLine,"%EncodedCommand%")
+| rex field=CommandLine "(?i)-EncodedCommand\s+(?<EncodedCommand>[A-Za-z0-9+/=]+)"
+| eval EncodedLength=len(EncodedCommand)
+| eval ProcessChain=ParentProcess." -> ".Process
+| stats count as executions,
+        dc(ProcessGuid) as unique_processes,
+        min(UtcTime) as first_seen,
+        max(UtcTime) as last_seen,
+        values(Computer) as host,
+        values(User) as user,
+        values(EncodedLength) as encoded_lengths
+        by ProcessChain
+| sort - executions

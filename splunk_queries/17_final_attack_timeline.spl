@@ -1,0 +1,40 @@
+index=attack_data sourcetype=XmlWinEventLog
+| rex field=_raw "<EventID>(?<EventCode>\d+)</EventID>"
+| rex field=_raw "<Data Name='UtcTime'>(?<UtcTime>[^<]+)</Data>"
+| rex field=_raw "<Data Name='User'>(?<User>[^<]+)</Data>"
+| rex field=_raw "<Data Name='Image'>(?<Image>[^<]+)</Data>"
+| rex field=_raw "<Data Name='CommandLine'>(?<CommandLine>[^<]+)</Data>"
+| rex field=_raw "<Data Name='ParentImage'>(?<ParentImage>[^<]+)</Data>"
+| rex field=_raw "<Data Name='TargetFilename'>(?<TargetFilename>[^<]+)</Data>"
+| rex field=_raw "<Data Name='TargetObject'>(?<TargetObject>[^<]+)</Data>"
+| eval Process=replace(Image,"^.*\\\\","")
+| eval ParentProcess=replace(ParentImage,"^.*\\\\","")
+| eval cmd=lower(coalesce(CommandLine,""))
+| eval Stage=case(
+    EventCode="1" AND Process="winrshost.exe", "01 - Remote shell activity",
+    EventCode="1" AND Process="powershell.exe" AND like(cmd,"%encodedcommand%"), "02 - Encoded PowerShell",
+    EventCode="1" AND Process="cmd.exe" AND like(cmd,"%copy%") AND like(cmd,"%windowsserviceexample.exe%"), "03 - Payload copied",
+    EventCode="11" AND lower(TargetFilename)="c:\\program.exe", "04 - Program.exe created",
+    EventCode="13" AND like(TargetObject,"%Example Service%ImagePath%"), "05 - Service ImagePath set",
+    EventCode="1" AND Process="sc.exe" AND like(cmd,"%create%") AND like(cmd,"%example service%"), "06 - Service created",
+    EventCode="1" AND Process="sc.exe" AND like(cmd,"%start%") AND like(cmd,"%example service%"), "07 - Service started",
+    EventCode="1" AND lower(Image)="c:\\program.exe" AND ParentProcess="services.exe", "08 - Program.exe executed as SYSTEM",
+    EventCode="1" AND Process="sc.exe" AND like(cmd,"%stop%") AND like(cmd,"%example service%"), "09 - Service stopped",
+    EventCode="1" AND Process="sc.exe" AND like(cmd,"%delete%") AND like(cmd,"%example service%"), "10 - Service deleted"
+)
+| where isnotnull(Stage)
+| eval Evidence=case(
+    Stage="01 - Remote shell activity", "winrshost.exe observed",
+    Stage="02 - Encoded PowerShell", "PowerShell executed with EncodedCommand",
+    Stage="03 - Payload copied", "Atomic Red Team executable copied toward service-path test",
+    Stage="04 - Program.exe created", "C:\\Program.exe created",
+    Stage="05 - Service ImagePath set", "Example Service configured with C:\\Program Files\\windows_service.exe",
+    Stage="06 - Service created", "sc.exe created Example Service",
+    Stage="07 - Service started", "sc.exe started Example Service",
+    Stage="08 - Program.exe executed as SYSTEM", "services.exe launched C:\\Program.exe under SYSTEM",
+    Stage="09 - Service stopped", "sc.exe stopped Example Service",
+    Stage="10 - Service deleted", "sc.exe deleted Example Service"
+)
+| stats earliest(UtcTime) as Time values(User) as User values(Evidence) as Evidence by Stage
+| sort Stage
+| table Stage Time User Evidence
