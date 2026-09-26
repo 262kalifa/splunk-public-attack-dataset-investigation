@@ -1,24 +1,23 @@
-# Intermediate SOC Investigation Using Public Attack Data in Splunk
+# Windows Sysmon Threat Investigation & Detection Engineering in Splunk
 
-This project documents an intermediate SOC investigation using a public Windows Sysmon attack dataset in Splunk.
+## Overview
 
-The investigation progressed from broad event review to suspicious PowerShell analysis, Windows service investigation, SYSTEM-level process execution, MITRE ATT&CK mapping, and detection engineering.
+This project documents a structured investigation of a public Windows Sysmon attack-simulation dataset in Splunk.
 
-## Project Summary
+The analysis progressed from broad telemetry review to suspicious PowerShell activity, Windows service creation, registry modification, file creation, SYSTEM-level process execution, MITRE ATT&CK mapping, and development of a reusable Splunk detection.
 
-The investigation identified activity consistent with a controlled simulation of **MITRE ATT&CK T1574.009 – Path Interception by Unquoted Path**.
+The primary finding was activity consistent with a controlled simulation of **MITRE ATT&CK T1574.009 – Path Interception by Unquoted Path**.
 
-Key evidence included:
+## Project Highlights
 
-- repeated PowerShell `EncodedCommand` execution;
-- remote shell and command-shell activity;
-- creation of a Windows service named `Example Service`;
-- an unquoted service path: `C:\Program Files\windows_service.exe`;
-- creation of `C:\Program.exe`;
-- execution of `C:\Program.exe` by `services.exe`;
-- execution under `NT AUTHORITY\SYSTEM`;
-- Atomic Red Team references to `T1574.009`;
-- a Splunk detection rule for similar service-path behavior.
+- Investigated **10,290 Sysmon events** in Splunk.
+- Analyzed repeated PowerShell `EncodedCommand` execution.
+- Reconstructed process and service activity across multiple Sysmon event types.
+- Identified an unquoted Windows service path.
+- Confirmed `C:\Program.exe` execution by `services.exe` as `NT AUTHORITY\SYSTEM`.
+- Correlated the activity with Atomic Red Team `T1574.009` references.
+- Built a reusable SPL detection for suspicious service-launched executables.
+- Produced an investigation report, evidence set, ATT&CK mapping, and detection query library.
 
 ## Tools and Technologies
 
@@ -26,63 +25,61 @@ Key evidence included:
 - Windows Sysmon
 - SPL
 - PowerShell
-- Windows Registry analysis
+- Windows process and registry telemetry
 - MITRE ATT&CK
-- Atomic Red Team attack data
+- Atomic Red Team public attack data
 
 ## Dataset
 
-Source: Splunk Attack Data – First Time Windows Service
+**Source:** Splunk Attack Data – First Time Windows Service
 
-The imported dataset contained **10,290 Sysmon events** and was stored in the Splunk index:
-
-```text
-attack_data
-```
-
-Sourcetype:
+The imported dataset contained **10,290 Sysmon events**.
 
 ```text
-XmlWinEventLog
+Index:      attack_data
+Sourcetype: XmlWinEventLog
+Host:       win-dc-533.attackrange.local
 ```
 
-Investigated host:
+The raw public dataset is intentionally excluded from this repository. The repository contains the investigation artifacts, queries, evidence, and reports produced from the analysis.
 
-```text
-win-dc-533.attackrange.local
-```
-
-## Investigation Flow
+## Investigation Workflow
 
 ```text
 Dataset validation
         ↓
-Process creation review
+Sysmon event review
         ↓
-Suspicious PowerShell EncodedCommand activity
+Process creation analysis
         ↓
-Encoded payload extraction and decoding
+Encoded PowerShell investigation
         ↓
-Process-chain investigation
+Payload extraction and decoding
         ↓
-Windows service registry analysis
+Process-chain reconstruction
         ↓
-Example Service investigation
+Windows service and registry analysis
         ↓
-C:\Program.exe creation
+C:\Program.exe creation and execution
         ↓
-SYSTEM-level execution through services.exe
-        ↓
-Final activity timeline
+Consolidated activity timeline
         ↓
 MITRE ATT&CK mapping
         ↓
 Reusable Splunk detection
 ```
 
-## Key Finding
+## Primary Finding
 
-The strongest evidence showed:
+A Windows service named `Example Service` was configured with:
+
+```text
+C:\Program Files\windows_service.exe
+```
+
+The path contained a space and was not quoted.
+
+Sysmon later recorded:
 
 ```text
 Parent Process: services.exe
@@ -92,43 +89,88 @@ Command Line:   C:\Program Files\windows_service.exe
 User:           NT AUTHORITY\SYSTEM
 ```
 
-This mismatch between the configured service command line and the actual process image is consistent with simulated **unquoted service-path / path-interception behavior**.
+The mismatch between the configured service command line and the executable that actually ran is consistent with **path interception through an unquoted service path**.
 
-The dataset also contained the following Atomic Red Team reference:
+The dataset also contained an Atomic Red Team reference to:
 
 ```text
 C:\AtomicRedTeam\atomics\T1574.009\
 ```
 
-This supports the conclusion that the activity was attack-simulation activity rather than confirmed real-world malware.
+That context supports interpreting the behavior as controlled attack simulation rather than confirmed real-world malware.
+
+## Supporting Investigation Findings
+
+### Encoded PowerShell
+
+Repeated PowerShell processes used `EncodedCommand`. Selected Base64 content was extracted and decoded during analysis.
+
+Encoded PowerShell was treated as a security-relevant indicator, not as proof of malicious activity by itself.
+
+### Service and Registry Activity
+
+Registry telemetry identified the `Example Service` `ImagePath`, and service-control activity showed creation, startup, stop, and deletion of the service.
+
+### File and Process Evidence
+
+The investigation correlated:
+
+- creation of `C:\Program.exe`
+- service startup
+- execution by `services.exe`
+- SYSTEM execution context
+- subsequent service cleanup
+
+This provided stronger evidence than relying on a single process event.
 
 ## MITRE ATT&CK Mapping
 
 | Observed Behavior | ATT&CK Technique |
 |---|---|
-| Unquoted path led to `C:\Program.exe` execution | T1574.009 – Path Interception by Unquoted Path |
-| PowerShell with `EncodedCommand` | T1059.001 – PowerShell |
-| `cmd.exe` command execution | T1059.003 – Windows Command Shell |
-| Windows service creation and execution | T1543.003 – Windows Service |
-| `whoami.exe` user discovery | T1033 – System Owner/User Discovery |
+| Unquoted service path resulted in `C:\Program.exe` execution | **T1574.009 – Path Interception by Unquoted Path** |
+| PowerShell with `EncodedCommand` | **T1059.001 – PowerShell** |
+| `cmd.exe` command execution | **T1059.003 – Windows Command Shell** |
+| Windows service creation and execution | **T1543.003 – Windows Service** |
+| `whoami.exe` execution | **T1033 – System Owner/User Discovery** |
+
+The detailed mapping is available in [reports/18_mitre_attack_mapping.md](./reports/18_mitre_attack_mapping.md).
 
 ## Detection Engineering
 
-A reusable Splunk detection was created to identify suspicious executables launched by `services.exe` directly from the root of a drive.
+After the investigation, a reusable Splunk detection was created for suspicious executables launched by `services.exe` directly from the root of a drive.
 
-The detection successfully identified:
+The detection is designed around behavior rather than hard-coding only `C:\Program.exe`.
+
+In this dataset, it identified:
 
 ```text
-services.exe -> C:\Program.exe
+services.exe → C:\Program.exe
 User: NT AUTHORITY\SYSTEM
-Severity: High
 ```
 
-The detection query is available at:
+Detection query:
 
-```text
-splunk_queries/19_unquoted_service_path_detection.spl
-```
+[19_unquoted_service_path_detection.spl](./splunk_queries/19_unquoted_service_path_detection.spl)
+
+The detection is a lab rule and would require tuning and validation before production use.
+
+## Selected Evidence
+
+Key screenshots include:
+
+- [Suspicious encoded PowerShell](./screenshots/05_suspicious_powershell_encoded_commands.png)
+- [Decoded PowerShell wrapper](./screenshots/07_decoded_powershell_wrapper_command.png)
+- [Service ImagePath registry changes](./screenshots/13b_service_imagepath_registry_changes.png)
+- [Windows service investigation summary](./screenshots/14_windows_service_exe_investigation_summary.png)
+- [Program.exe service execution](./screenshots/15_program_exe_service_execution.png)
+- [Final activity timeline](./screenshots/17_final_attack_timeline.png)
+- [Unquoted service-path detection](./screenshots/19_unquoted_service_path_detection.png)
+
+## Reports
+
+- [Full investigation report](./investigation_report.md)
+- [MITRE ATT&CK mapping](./reports/18_mitre_attack_mapping.md)
+- [PDF investigation report](./reports/Windows_Sysmon_Threat_Investigation_Report.pdf)
 
 ## Repository Structure
 
@@ -136,68 +178,37 @@ splunk_queries/19_unquoted_service_path_detection.spl
 splunk-public-attack-dataset-investigation/
 ├── README.md
 ├── investigation_report.md
+├── .gitignore
 ├── reports/
-│   └── 18_mitre_attack_mapping.md
-|   └── Project_4_SOC_Investigation_Report_Final.pdf
+│   ├── 18_mitre_attack_mapping.md
+│   └── Windows_Sysmon_Threat_Investigation_Report.pdf
 ├── screenshots/
-│   ├── 01_attack_data_import_confirmed.png
-│   ├── 02_sysmon_event_codes_summary.png
-│   ├── 03_process_creation_events.png
-│   ├── ...
-│   ├── 17_final_attack_timeline.png
-│   └── 19_unquoted_service_path_detection.png
-├── splunk_queries/
-│   ├── 04_process_activity_classification.spl
-│   ├── ...
-│   └── 19_unquoted_service_path_detection.spl
-
-```
-The raw attack dataset is stored locally and intentionally excluded from this GitHub repository through .gitignore. The project uses the public Splunk Attack Data source referenced above.
-
-
-## Main Evidence
-
-Important screenshots include:
-
-- `05_suspicious_powershell_encoded_commands.png`
-- `07_decoded_powershell_wrapper_command.png`
-- `13b_service_imagepath_registry_changes.png`
-- `14_windows_service_exe_investigation_summary.png`
-- `15_program_exe_service_execution.png`
-- `17_final_attack_timeline.png`
-- `19_unquoted_service_path_detection.png`
-
-## Report
-
-The full investigation report is available in:
-
-```text
-investigation_report.md
-```
-
-and:
-
-```text
-reports/Project_4_SOC_Investigation_Report_Final.pdf
+│   └── investigation evidence
+└── splunk_queries/
+    └── reusable investigation and detection SPL
 ```
 
 ## Skills Demonstrated
 
 - Splunk investigation workflow
-- Sysmon log analysis
-- SPL field extraction
-- Process-chain analysis
+- Windows Sysmon analysis
+- SPL development and field extraction
 - PowerShell investigation
 - Base64 decoding
+- process-chain analysis
 - Windows service analysis
-- Registry analysis
-- Timeline reconstruction
+- registry telemetry analysis
+- timeline reconstruction
 - MITRE ATT&CK mapping
-- SOC documentation
-- Detection engineering
+- detection engineering
+- evidence-based technical reporting
 
-## Conclusion
+## Analyst Takeaway
 
-This project demonstrates the progression from identifying suspicious activity to validating evidence, reconstructing the attack sequence, mapping the behavior to MITRE ATT&CK, and developing a reusable Splunk detection.
+This project reinforced the importance of moving from **single suspicious events to correlated evidence**.
 
-The project is based on a public attack-simulation dataset and should be interpreted as a defensive investigation lab rather than a real-world incident response case.
+The strongest conclusion did not come from encoded PowerShell or a single service event. It came from correlating process, file, registry, service-control, and execution-context evidence into one defensible timeline.
+
+## Status
+
+**Completed.** Investigation artifacts, ATT&CK mapping, supporting evidence, reusable SPL queries, and the detection rule are documented in this repository.
