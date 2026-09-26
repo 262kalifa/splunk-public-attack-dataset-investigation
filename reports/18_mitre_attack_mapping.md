@@ -1,4 +1,4 @@
-# Step 18 – MITRE ATT&CK Mapping
+# MITRE ATT&CK Mapping
 
 The investigation identified several behaviors that map to MITRE ATT&CK techniques.
 
