@@ -1,4 +1,4 @@
-# Intermediate SOC Investigation Using Public Attack Data in Splunk
+# Windows Sysmon Threat Investigation & Detection Engineering in Splunk
 
 **Analyst:** Kalifa  
 **Platform:** Splunk Enterprise  
@@ -11,7 +11,7 @@
 
 ## 1. Project Overview
 
-This project documents an intermediate Security Operations Center (SOC) investigation using a public Windows attack dataset in Splunk.
+This project documents a structured Security Operations Center (SOC) investigation using a public Windows attack-simulation dataset in Splunk.
 
 The investigation began with a broad review of imported Sysmon telemetry and progressively narrowed into suspicious PowerShell activity, Windows service creation, registry changes, file creation, and SYSTEM-level process execution.
 
@@ -164,7 +164,7 @@ Two relevant `ImagePath` entries were identified:
 
 **Figure 4:** Registry ImagePath changes identifying `Example Service` and its executable path.
 
-The `npf` entry was consistent with Splunk-related activity and was treated as low priority for this investigation.
+The `npf` entry was not central to the suspicious service-path sequence and was treated as low priority for this investigation.
 
 `Example Service` was more significant because its executable path contained a space and was configured without quotation marks.
 
